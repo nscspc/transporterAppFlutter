@@ -10,6 +10,8 @@ import 'package:liveasy/controller/transporterIdController.dart';
 import 'package:liveasy/functions/mapUtils/getLoactionUsingImei.dart';
 import 'package:liveasy/functions/truckApis/getTruckDataWithPageNo.dart';
 import 'package:liveasy/functions/truckApis/truckApiCalls.dart';
+import 'package:liveasy/language/localization_service.dart';
+import 'package:liveasy/models/gpsDataModel.dart';
 import 'package:liveasy/providerClass/providerData.dart';
 import 'package:liveasy/screens/mapAllTrucks.dart';
 import 'package:liveasy/screens/myTrucksSearchResultsScreen.dart';
@@ -57,6 +59,7 @@ class _MyTrucksState extends State<MyTrucks> {
   DateTime now = DateTime.now().subtract(Duration(hours: 5, minutes: 30));
   var runningList = [];
   var runningStatus = [];
+  var status2 = [];
   var runningGpsData = [];
   int i = 0;
   var StoppedList = [];
@@ -348,7 +351,7 @@ class _MyTrucksState extends State<MyTrucks> {
                           children: [
                             loading
                                 ? TruckLoadingWidgets()
-                                : trucklist.isEmpty
+                                : gpsDataList.isEmpty
                                     ? Container(
                                         // height: MediaQuery.of(context).size.height * 0.27,
                                         margin: EdgeInsets.only(top: 153),
@@ -397,14 +400,14 @@ class _MyTrucksState extends State<MyTrucks> {
                                             scrollDirection: Axis.vertical,
                                             padding: EdgeInsets.only(
                                                 bottom: space_15),
-                                            itemCount: trucklist.length,
+                                            itemCount: gpsDataList.length,
                                             itemBuilder: (context, index) =>
-                                                index == trucklist.length
+                                                index == gpsDataList.length
                                                     ? bottomProgressBarIndicatorWidget()
                                                     : MyTruckCard(
                                                         truckno:
                                                             trucklist[index],
-                                                        status: status[index],
+                                                        status: status2[index],
                                                         gpsData:
                                                             gpsDataList[index],
                                                         device:
@@ -601,7 +604,8 @@ class _MyTrucksState extends State<MyTrucks> {
     //   FutureGroup futureGroup = FutureGroup();
 
     var a = mapUtil.getDevices();
-    var b = mapUtil.getTraccarPositionforAll();
+    // var b = mapUtil.getTraccarPositionforAll();
+    var b = mapUtil.getTraccarPositionforAllCustomized();
     var devices = await a;
     var gpsDataAll = await b;
     trucklist.clear();
@@ -644,11 +648,106 @@ class _MyTrucksState extends State<MyTrucks> {
     futureGroup.close();
     await futureGroup.future; */ //Fire all APIs at once (not one after the other)
 
-    for (int i = 0; i < gpsDataAll.length; i++) {
-      print("DeviceId is ${devices[i].deviceId} for ${devices[i].truckno}");
+    int j = 0;
+    for (var json in gpsDataAll) {
+      GpsDataModel gpsDataModel = new GpsDataModel();
+      // gpsDataModel.id = json["id"] != null ? json["id"] : 'NA';
+      gpsDataModel.deviceId =
+          json["deviceId"] != null ? json["deviceId"] : 'NA';
+      gpsDataModel.rssi =
+          json["attributes"]["rssi"] != null ? json["attributes"]["rssi"] : -1;
+      gpsDataModel.result = json["attributes"]["result"] != null
+          ? json["attributes"]["result"]
+          : 'NA';
+      gpsDataModel.latitude = json["latitude"] != null ? json["latitude"] : 0;
+      gpsDataModel.longitude =
+          json["longitude"] != null ? json["longitude"] : 0;
+      print(
+          "LAT : ${gpsDataModel.latitude}, LONG : ${gpsDataModel.longitude} ");
+      gpsDataModel.distance = json["attributes"]["totalDistance"] != null
+          ? json["attributes"]["totalDistance"]
+          : 0;
+      gpsDataModel.motion = json["attributes"]["motion"] != null
+          ? json["attributes"]["motion"]
+          : false;
+      print("Motion : ${gpsDataModel.motion}");
+      gpsDataModel.ignition = json["attributes"]["ignition"] != null
+          ? json["attributes"]["ignition"]
+          : false;
+      gpsDataModel.speed = json["speed"] != null ? json["speed"] * 1.85 : 'NA';
+      gpsDataModel.course = json["course"] != null ? json["course"] : 'NA';
+      gpsDataModel.deviceTime =
+          json["deviceTime"] != null ? json["deviceTime"] : 'NA';
+      gpsDataModel.serverTime =
+          json["serverTime"] != null ? json["serverTime"] : 'NA';
+      gpsDataModel.fixTime = json["fixTime"] != null ? json["fixTime"] : 'NA';
+      //   gpsDataModel.attributes = json["fixTime"] != null ? json["fixTime"] : 'NA';
+      var latn = gpsDataModel.latitude =
+          json["latitude"] != null ? json["latitude"] : 0;
+      var lngn = gpsDataModel.longitude =
+          json["longitude"] != null ? json["longitude"] : 0;
+      String? addressstring;
+      try {
+        List<Placemark> newPlace;
+        current_lang = LocalizationService().getCurrentLang();
+        if (current_lang == 'Hindi') {
+          newPlace = await placemarkFromCoordinates(latn, lngn,
+              localeIdentifier: "hi_IN");
+        } else {
+          newPlace = await placemarkFromCoordinates(latn, lngn,
+              localeIdentifier: "en_US");
+        }
+        var first = newPlace.first;
 
-      getGPSData(gpsDataAll[i], i, devices[i].truckno, devices[i]);
+        if (first.subLocality == "")
+          addressstring =
+              " ${first.street}, ${first.locality}, ${first.administrativeArea}, ${first.postalCode}, ${first.country}";
+        else if (first.locality == "")
+          addressstring =
+              "${first.street}, ${first.subLocality}, ${first.administrativeArea}, ${first.postalCode}, ${first.country}";
+        else if (first.administrativeArea == "")
+          addressstring =
+              "${first.street}, ${first.subLocality}, ${first.locality}, ${first.postalCode}, ${first.country}";
+        else
+          addressstring =
+              "${first.street}, ${first.subLocality}, ${first.locality}, ${first.administrativeArea}, ${first.postalCode}, ${first.country}";
+        print("ADD $addressstring");
+      } catch (e) {
+        print(e);
+
+        addressstring = "";
+      }
+      gpsDataModel.address = "$addressstring";
+      getGPSData(gpsDataModel, j, devices[j].truckno, devices[j]);
+      setState(() {
+        gpsDataList.add(gpsDataModel);
+      });
+      // gpsDataList.add(gpsDataModel);
+      print("gpsDataList :- ");
+      print(gpsDataList);
+      if (devices[j].status == "online") {
+        status2.add("Online");
+      } else {
+        status2.add("Offline");
+      }
+      j++;
+      // LatLongList.add(gpsDataModel);
+      // i++;
+      // gpsDataList.add(value)
+      // if (j == 4) {
+      //   // break;
+      setState(() {
+        loading = false;
+      });
+      print("loading falsed");
+      // }
     }
+
+    // for (int i = 0; i < gpsDataAll.length; i++) {
+    //   print("DeviceId is ${devices[i].deviceId} for ${devices[i].truckno}");
+
+    //   getGPSData(gpsDataAll[i], i, devices[i].truckno, devices[i]);
+    // }
 
     setState(() {
       gpsDataList = gpsList;
